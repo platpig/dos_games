@@ -1,0 +1,75 @@
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Emulators Tests</title>
+    <link href="mocha.css" rel="stylesheet" />
+    <style>
+        .test-config {
+            position: fixed;
+            left: 15px;
+            top: 15px;
+            display: flex;
+            flex-direction: column;
+            width: fit-content;
+        }
+
+        .test-config-row {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="mocha"></div>
+    <script src="mocha.js"></script>
+    <script src="chai.js"></script>
+    <script>
+        mocha.setup({
+            ui: 'qunit',
+            allowUncaught: true,
+            bail: true,
+            fullTrace: true,
+            timeout: 60000
+        });
+        mocha.allowUncaught();
+    </script>
+    <script src="test.js"></script>
+    
+    <div id="test-config" class="test-config">
+        <div class="test-config-row">
+            Server Address:&nbsp;
+            <input id="server-ip" type="text" value="wss://netherlands.dos.zone"></input>
+            &nbsp;&nbsp;
+            <button id="start-net">Start Net Tests</button>
+        </div>
+        <br/>
+        <button id="start">Start Tests</button>
+    </div>
+
+    <script>
+        const testConfig = document.getElementById("test-config");
+        const start = document.getElementById("start");
+        const startNet = document.getElementById("start-net");
+
+        start.addEventListener("click", () => {
+            testConfig.style.display = "none";
+
+            window.createTests();
+            mocha.run();
+        });
+
+        startNet.addEventListener("click", () => {
+            testConfig.style.display = "none";
+
+            window.ipxServerAddress = document.getElementById("server-ip").value.trim();
+            window.createNetworkTests();
+            mocha.run();
+        });
+    </script>
+</body>
+
+</html>

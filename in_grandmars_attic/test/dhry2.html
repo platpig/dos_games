@@ -1,0 +1,135 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <style>
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+    </style>
+    <script src="../emulators.js"></script>
+</head>
+
+<body>
+    <div>
+        <button onClick="javascript:downloadBundleAndRun({worker: true, x: false})">dosboxWorker</button>
+        <button onClick="javascript:downloadBundleAndRun({worker: false, x: false})">dosboxDirect</button>
+        <button onClick="javascript:downloadBundleAndRun({worker: true, x: true})">xWorker</button>
+        <button onClick="javascript:downloadBundleAndRun({worker: false, x: true})">xDirect</button>
+        <pre id="stdout"></pre>
+    </div>
+
+    <script>
+        emulators.pathPrefix = "../";
+
+        let runId = 0;
+        async function runBundle(bundle, options) {
+            const id = runId++;
+            const stdout = document.getElementById("stdout");
+
+            // promise is resolved when emulator is started
+            const ci = await (options.worker ?
+                (options.x ? emulators.dosboxXWorker(bundle) : emulators.dosboxWorker(bundle)) :
+                (options.x ? emulators.dosboxXDirect(bundle) : emulators.dosDirect(bundle)));
+
+
+            let startedAt = null;
+            let runStartedAt = Date.now();
+            let prevNonSkippableSleepCount = 0;
+            let prevSleepCount = 0;
+            let prevCycles = 0;
+            const medianVax = [];
+            const medianCycles = [];
+            const medianNonSkippableSleepCount = [];
+            const medianSleepCount = [];
+            const sortFn = (a, b) => a - b;
+            ci.events().onStdout((message) => {
+                if (!message.startsWith("dhry2:")) {
+                    return;
+                }
+
+                if (startedAt === null) {
+                    startedAt = Date.now();
+                }
+
+                const [_, runs, delta, vax] = message.split(" ");
+                stdout.innerHTML += (id) + ": " + runs + " runs, browser time " + delta + " ms, " +
+                    "VAX rating " + vax + "\n";
+                ci.asyncifyStats().then((stats) => {
+                const dt = Date.now() - runStartedAt;
+                const nonSkippableSleepCount = stats.nonSkippableSleepCount - prevNonSkippableSleepCount;
+                const sleepCount = stats.sleepCount - prevSleepCount;
+                const cycles = stats.cycles - prevCycles;
+                prevNonSkippableSleepCount = stats.nonSkippableSleepCount;
+                prevSleepCount = stats.sleepCount;
+                prevCycles = stats.cycles;
+                runStartedAt = Date.now();
+                medianNonSkippableSleepCount.push(nonSkippableSleepCount * 1000 / dt);
+                medianSleepCount.push(sleepCount * 1000 / dt);
+                medianCycles.push(cycles / dt);
+                    stdout.innerHTML += (id) + ": sleep p/sec: " + Math.round(sleepCount * 1000 /dt) + 
+                        " , non skippable p/sec: " + Math.round(nonSkippableSleepCount * 1000 / dt) +
+                        " , avg cycles p/ms: " + Math.round(cycles / dt) + "\n";
+                });
+                medianVax.push(vax);
+                if (runs === "320000") {
+                    const executionTimeSec = (Date.now() - startedAt) / 1000;
+                    medianVax.sort(sortFn);
+                    medianNonSkippableSleepCount.sort(sortFn);
+                    medianSleepCount.sort(sortFn);
+                    medianCycles.sort(sortFn);
+
+                    stdout.innerHTML += (id) +
+                        ": Time: " + Math.round(executionTimeSec * 10) / 10 + " sec" +
+                        " RpS: " + Math.round((runs - 1000) / executionTimeSec) +
+                        " Med VAX: " + medianVax[medianVax.length / 2] + "\n";
+
+                    ci.asyncifyStats().then((stats) => {
+                        const dt = Date.now() - startedAt;
+                        stdout.innerHTML += (id) + ": Message sent: " + stats.messageSent +
+                            "(frame " + stats.messageFrame + ") " +
+                            "(sound " + stats.messageSound + ")\n";
+                        stdout.innerHTML += (id) + ": Message recv: " + stats.messageReceived + "\n";
+                        stdout.innerHTML += (id) + ": Sleep count: " + stats.sleepCount + "\n";
+                        stdout.innerHTML += (id) + ": Sleep time: " + Math.round(stats.sleepTime / 1000 * 10) / 10 + "sec\n";
+                        stdout.innerHTML += (id) + ": Avg sleep time: " + stats.sleepTime / stats.sleepCount + "ms\n";
+                        stdout.innerHTML += (id) + ": Med non skippable sleep p/sec: " +
+                            Math.round(medianNonSkippableSleepCount[Math.round(medianNonSkippableSleepCount.length / 2)]) + "\n";
+                        stdout.innerHTML += (id) + ": Med sleep p/sec: " +
+                            Math.round(medianSleepCount[Math.round(medianSleepCount.length / 2)]) + "\n";
+                        stdout.innerHTML += (id) + ": Med cycles p/ms: " + 
+                            Math.round(medianCycles[Math.round(medianCycles.length / 2)]) + "\n";
+
+                        //properly exit
+                        ci.exit();
+                    });
+                }
+            });
+        }
+
+        function downloadBundleAndRun(options) {
+            const bundleUrl = "dhry2.jsdos";
+
+            // we need to download bundle, emulators accept only Uint8Array
+            const xhr = new XMLHttpRequest();
+            xhr.open("GET", bundleUrl, true);
+            xhr.overrideMimeType("text/plain; charset=x-user-defined");
+            xhr.responseType = "arraybuffer";
+            xhr.onreadystatechange = () => {
+                if (xhr.readyState === 4 && xhr.status === 200) {
+                    // do not forget to create Uint8Array, 
+                    // arraybuffer will not work!
+                    runBundle(new Uint8Array(xhr.response), options);
+                }
+            };
+            xhr.send();
+        };
+    </script>
+</body>
+
+</html>
